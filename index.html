@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Truco</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <style>
+        .deck-container, .hand-container {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 10px;
+        }
+        .card {
+            width: 100px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="mt-4">Truco</h1>
+        <div class="row mt-4">
+            <div class="col-md-4">
+                <button class="btn btn-primary" onclick="comprarCincoCartas()">Comprar 5 Cartas</button>
+            </div>
+            <div class="col-md-4">
+                <button class="btn btn-secondary" onclick="embaralharCartas()">Embaralhar Cartas</button>
+            </div>
+            <div class="col-md-4">
+                <button class="btn btn-success" onclick="novoBaralho()">Novo Baralho</button>
+            </div>
+        </div>
+        <hr>
+        <button class="btn btn-info mt-4" data-toggle="modal" data-target="#logsModal" onclick="loadLogs()">Exibir Logs</button>
+        <div class="modal fade" id="logsModal" tabindex="-1" aria-labelledby="logsModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="logsModalLabel">Logs Registrados</h5>
+                        <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                            <span aria-hidden="true">&times;</span>
+                        </button>
+                    </div>
+                    <div class="modal-body">
+                        <div id="logsContainer"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <h3 class="mt-4">Cartas no Baralho</h3>
+        <div id="deckContainer" class="deck-container"></div>
+        <h3 class="mt-4">Cartas na Mão do Jogador</h3>
+        <div id="handContainer" class="hand-container"></div>
+    </div>
+    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.9.2/dist/umd/popper.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/0.21.1/axios.min.js"></script>
+
+    <script>
+        const apiDeckUrl = 'https://deckofcardsapi.com/api/deck';
+        const apiLogsUrl = 'https://www.piway.com.br/unoesc/api';
+        const matricula = '417901';
+        let deckId = null;
+        let deck = [];
+        let hand = [];
+        async function novoBaralho() {
+            const response = await axios.get(`${apiDeckUrl}/new/shuffle/`);
+            deckId = response.data.deck_id;
+
+            const deckResponse = await axios.get(`${apiDeckUrl}/${deckId}/draw/?count=52`);
+            deck = deckResponse.data.cards;
+            exibirCartasNoBaralho();
+                        saveLog('novo-baralho', 'Novo baralho criado com 52 cartas.');
+        }
+        function exibirCartasNoBaralho() {
+            const deckContainer = document.getElementById('deckContainer');
+            deckContainer.innerHTML = '';
+            deck.forEach(carta => {
+                const img = document.createElement('img');
+                img.src = carta.image;
+                img.classList.add('card');
+                deckContainer.appendChild(img);
+            });
+        }
+        function comprarCincoCartas() {
+            if (deck.length < 5) {
+                alert('Não há cartas suficientes no baralho!');
+                return;
+            }
+            const cartasCompradas = deck.splice(0, 5); 
+            hand.push(...cartasCompradas); 
+
+            exibirCartasNoBaralho();
+            exibirCartasNaMão();
+
+            const resultado = cartasCompradas.map(carta => `${carta.value} de ${carta.suit}`).join(', ');
+            saveLog('comprar', `Comprou 5 cartas: ${resultado}`);
+        }
+        function exibirCartasNaMão() {
+            const handContainer = document.getElementById('handContainer');
+            handContainer.innerHTML = '';
+            hand.forEach(carta => {
+                const img = document.createElement('img');
+                img.src = carta.image;
+                img.classList.add('card');
+                handContainer.appendChild(img);
+            });
+        }
+        async function embaralharCartas() {
+            const response = await axios.get(`${apiDeckUrl}/${deckId}/shuffle/`);
+            if (response.data.success) {
+                const deckResponse = await axios.get(`${apiDeckUrl}/${deckId}/draw/?count=${deck.length}`);
+                deck = deckResponse.data.cards;
+                exibirCartasNoBaralho();
+                saveLog('embaralhar', 'Cartas do baralho foram embaralhadas.');
+            }
+        }
+        async function saveLog(metodo, resultado) {
+            await axios.get(`${apiLogsUrl}/inserir/log/${matricula}/deckofcards/${metodo}/${resultado}`);
+        }
+        async function loadLogs() {
+            const response = await axios.get(`${apiLogsUrl}/logs/${matricula}`);
+            const logs = response.data;
+            const logsContainer = document.getElementById('logsContainer');
+            logsContainer.innerHTML = '';
+
+            logs.forEach(log => {
+                const logElement = document.createElement('div');
+                logElement.classList.add('log-entry', 'mb-3');
+                logElement.innerHTML = `
+                    <p><strong>Data:</strong> ${log.log}</p>
+                    <p><strong>API:</strong> ${log.api}</p>
+                    <p><strong>Método:</strong> ${log.metodo}</p>
+                    <p><strong>Resultado:</strong> ${log.resultado}</p>
+                    <button class="btn btn-danger" onclick="deleteLog(${log.idlog})">Excluir</button>
+                    <hr>
+                `;
+                logsContainer.appendChild(logElement);
+            });
+        }
+        async function deleteLog(idlog) {
+            await axios.get(`${apiLogsUrl}/excluir/log/${idlog}/aluno/${matricula}`);
+            loadLogs();  
+        }
+    </script>
+</body>
+</html>
